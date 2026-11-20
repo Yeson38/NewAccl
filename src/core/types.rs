@@ -29,3 +29,8 @@ pub enum EchSource {
     Own,
     Shared,
 }
+
+// 统一流定义，用于 Executor 层返回
+pub trait AsyncStream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> AsyncStream for T {}
+pub type BoxedStream = Box<dyn AsyncStream>;

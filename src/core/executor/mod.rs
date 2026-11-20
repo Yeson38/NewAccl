@@ -4,31 +4,27 @@ use std::future::Future;
 use anyhow::{anyhow, Result};
 use futures_util::stream::{FuturesUnordered, Stream, StreamExt};
 use tokio::sync::watch;
-use tokio::io::{AsyncRead, AsyncWrite};
-use tracing::{info, warn, error};
+use tracing::{info, warn};
+use crate::core::types::BoxedStream;
 
-use crate::core::types::RouteAttempt;
+pub mod direct;
+pub mod ech;
+pub mod sni;
+pub mod proxy;
 
 pub const RACE_SIZE: usize = 8;
 pub const RACE_STAGGER_MS: u64 = 150;
 
 pub trait RaceCandidate: Send + Sync + 'static {
-    type Stream: AsyncRead + AsyncWrite + Unpin + Send;
     fn label(&self) -> String;
-    fn connect(self) -> Pin<Box<dyn Future<Output = Result<Self::Stream>> + Send>>;
-}
-
-pub enum CandidateError {
-    TcpLevel(anyhow::Error),
-    TlsLevel(anyhow::Error),
+    // 返回 (赢家Label, 连接流)
+    fn connect(self) -> Pin<Box<dyn Future<Output = Result<(String, BoxedStream)>> + Send>>;
 }
 
 pub struct Racer;
 
 impl Racer {
-    pub async fn race<S, C>(
-        mut stream: S,
-    ) -> Result<(C, C::Stream)>
+    pub async fn race<S, C>(mut stream: S) -> Result<BoxedStream>
     where
         C: RaceCandidate,
         S: Stream<Item = C> + Unpin,
@@ -60,55 +56,41 @@ impl Racer {
                                         tokio::select! {
                                             _ = tokio::time::sleep(delay) => {},
                                             _ = rx.wait_for(|v| *v) => {
-                                                return (label, Err(anyhow!("stagger cancelled by previous failure")));
+                                                return Err(anyhow!("cancelled"));
                                             }
                                         }
                                     }
                                     let start = Instant::now();
-                                    let res = candidate.connect().await;
-                                    (label, res.map(|s| (s, start.elapsed())))
+                                    match candidate.connect().await {
+                                        Ok((lbl, s)) => Ok((lbl, s, start.elapsed())),
+                                        Err(e) => Err(e),
+                                    }
                                 }));
                             }
                             None => exhausted = true,
                         }
                     }
                     Some(res) = pending.next(), if !pending.is_empty() => {
-                        match res {
-                            Ok((label, Ok((stream, latency)))) => {
-                                info!("Race winner: {} (latency: {:?})", label, latency);
-                                // 注意：这里需要根据实际情况获取赢家，这里为了骨架编译通过，暂时抛出错误
-                                // 实际实现中，C 需要是 Clone 的，或者通过其他方式将赢家和流返回
-                                todo!("Return the winning candidate and its stream. Need a way to preserve the candidate that won.")
-                            }
-                            Ok((label, Err(e))) => {
-                                warn!("Candidate {} failed: {}", label, e);
-                                if is_ip_level_failure(&e) {
-                                    let _ = failure_tx.send(true);
-                                    first_start = None;
-                                }
-                            }
-                            Err(_) => {
-                                error!("Task panicked");
-                            }
+                        if let Ok(Ok((label, stream, latency))) = res {
+                            info!("Race winner: {} (latency: {:?})", label, latency);
+                            return Ok(stream);
+                        } else if let Ok(Err(e)) = res {
+                            warn!("Candidate failed: {}", e);
+                            // 如果发生严重的 IP 级别错误，通知其余等待者放弃
+                            let _ = failure_tx.send(true);
+                            first_start = None;
                         }
                     }
                 }
             } else if !pending.is_empty() {
-                if let Some(Ok((label, Ok((stream, latency))))) = pending.next().await {
-                    info!("Race winner: {} (latency: {:?})", label, latency);
-                    todo!("Return winner");
+                if let Some(Ok(Ok((label, stream, latency)))) = pending.next().await {
+                    info!("Race winner (final): {} (latency: {:?})", label, latency);
+                    return Ok(stream);
                 }
             } else {
                 break;
             }
         }
-
-        Err(anyhow!("All candidates exhausted and failed"))
+        Err(anyhow!("All candidates failed"))
     }
-}
-
-fn is_ip_level_failure(_e: &anyhow::Error) -> bool {
-    // 这里根据实际错误类型判断是否属于 TCP 层失败
-    // 例如：TcpTimeout | TcpUnreachable | TcpRefused
-    true
 }
