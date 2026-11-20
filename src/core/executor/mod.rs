@@ -5,7 +5,7 @@ use anyhow::{anyhow, Result};
 use futures_util::stream::{FuturesUnordered, Stream, StreamExt};
 use tokio::sync::watch;
 use tracing::{info, warn};
-use crate::core::types::BoxedStream;
+use crate::core::types::{BoxedStream, RouteAttempt, ConnectionRequest};
 
 pub mod direct;
 pub mod ech;
@@ -17,7 +17,6 @@ pub const RACE_STAGGER_MS: u64 = 150;
 
 pub trait RaceCandidate: Send + Sync + 'static {
     fn label(&self) -> String;
-    // 返回 (赢家Label, 连接流)
     fn connect(self) -> Pin<Box<dyn Future<Output = Result<(String, BoxedStream)>> + Send>>;
 }
 
@@ -76,7 +75,6 @@ impl Racer {
                             return Ok(stream);
                         } else if let Ok(Err(e)) = res {
                             warn!("Candidate failed: {}", e);
-                            // 如果发生严重的 IP 级别错误，通知其余等待者放弃
                             let _ = failure_tx.send(true);
                             first_start = None;
                         }
@@ -93,4 +91,27 @@ impl Racer {
         }
         Err(anyhow!("All candidates failed"))
     }
+}
+
+pub fn build_candidates(plan: crate::core::types::ExecutionPlan, req: ConnectionRequest) -> Vec<Box<dyn RaceCandidate>> {
+    let mut cands: Vec<Box<dyn RaceCandidate>> = Vec::new();
+    for attempt in plan.candidates {
+        match attempt {
+            RouteAttempt::Direct => {
+                cands.push(Box::new(direct::DirectCandidate { req: req.clone() }));
+            }
+            RouteAttempt::Ech { .. } => {
+                cands.push(Box::new(ech::EchCandidate { req: req.clone() }));
+            }
+            RouteAttempt::Sni { sni } => {
+                for fake in sni {
+                    cands.push(Box::new(sni::SniCandidate { req: req.clone(), fake_sni: fake }));
+                }
+            }
+            RouteAttempt::Proxy { node_id, .. } => {
+                cands.push(Box::new(proxy::ProxyCandidate { req: req.clone(), node_id }));
+            }
+        }
+    }
+    cands
 }

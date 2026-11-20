@@ -4,6 +4,7 @@ use anyhow::Result;
 use crate::core::executor::RaceCandidate;
 use crate::core::types::{BoxedStream, ConnectionRequest};
 
+#[derive(Clone)]
 pub struct DirectCandidate {
     pub req: ConnectionRequest,
 }

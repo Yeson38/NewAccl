@@ -3,13 +3,8 @@ use async_trait::async_trait;
 use crate::core::engine::ModeEngine;
 use crate::core::types::{ConnectionRequest, ExecutionPlan, RouteAttempt, EchSource};
 
-pub struct RaceEngine {
-    // 实际项目中应从 JSON 读取配置
-}
-
-impl Default for RaceEngine {
-    fn default() -> Self { Self {} }
-}
+#[derive(Default)]
+pub struct RaceEngine;
 
 #[async_trait]
 impl ModeEngine for RaceEngine {
@@ -18,7 +13,6 @@ impl ModeEngine for RaceEngine {
     async fn evaluate(&self, req: &ConnectionRequest) -> Result<ExecutionPlan> {
         let domain = req.domain.as_deref().unwrap_or("");
         
-        // 模拟 hakimi 规则匹配 (硬编码 github.com 示例)
         if domain.contains("github.com") {
             return Ok(ExecutionPlan {
                 candidates: vec![
