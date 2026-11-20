@@ -1,0 +1,25 @@
+[package]
+name = "fusion-accelerator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Async & Network
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+socket2 = "0.5"
+
+# TLS & Crypto (Hakimi 同款 aws-lc-rs 体系)
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "tls12"] }
+aws-lc-rs = "1.8"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Utils
+anyhow = "1.0"
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
