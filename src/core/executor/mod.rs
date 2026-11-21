@@ -11,6 +11,7 @@ pub mod direct;
 pub mod ech;
 pub mod sni;
 pub mod proxy;
+pub mod ip_probe;
 
 pub const RACE_SIZE: usize = 8;
 pub const RACE_STAGGER_MS: u64 = 150;
@@ -25,6 +26,7 @@ pub enum Candidate {
     Ech(ech::EchCandidate),
     Sni(sni::SniCandidate),
     Proxy(proxy::ProxyCandidate),
+    IpProbe(ip_probe::IpProbeCandidate),
 }
 
 impl RaceCandidate for Candidate {
@@ -34,6 +36,7 @@ impl RaceCandidate for Candidate {
             Candidate::Ech(c) => c.label(),
             Candidate::Sni(c) => c.label(),
             Candidate::Proxy(c) => c.label(),
+            Candidate::IpProbe(c) => c.label(),
         }
     }
     fn connect(self) -> Pin<Box<dyn Future<Output = Result<(String, BoxedStream)>> + Send>> {
@@ -42,6 +45,7 @@ impl RaceCandidate for Candidate {
             Candidate::Ech(c) => c.connect(),
             Candidate::Sni(c) => c.connect(),
             Candidate::Proxy(c) => c.connect(),
+            Candidate::IpProbe(c) => c.connect(),
         }
     }
 }
@@ -139,6 +143,9 @@ pub fn build_candidates(plan: crate::core::types::ExecutionPlan, req: Connection
             }
             RouteAttempt::Proxy { node_id, .. } => {
                 cands.push(Candidate::Proxy(proxy::ProxyCandidate { req: req.clone(), node_id }));
+            }
+            RouteAttempt::IpProbe { ips } => {
+                cands.push(Candidate::IpProbe(ip_probe::IpProbeCandidate { req: req.clone(), ips }));
             }
         }
     }

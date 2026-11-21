@@ -8,7 +8,7 @@ pub struct RaceEngine;
 
 #[async_trait]
 impl ModeEngine for RaceEngine {
-    fn name(&self) -> &'static str { "RaceEngine (hakimi)" }
+    fn name(&self) -> &'static str { "RaceEngine (hakimi + watt)" }
 
     async fn evaluate(&self, req: &ConnectionRequest) -> Result<ExecutionPlan> {
         let domain = req.domain.as_deref().unwrap_or("");
@@ -16,6 +16,7 @@ impl ModeEngine for RaceEngine {
         if domain.contains("github.com") {
             return Ok(ExecutionPlan {
                 candidates: vec![
+                    RouteAttempt::IpProbe { ips: None },
                     RouteAttempt::Direct,
                     RouteAttempt::Ech { ech: EchSource::Own },
                     RouteAttempt::Sni { sni: vec!["www.bing.com".to_string()] },

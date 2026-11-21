@@ -21,6 +21,7 @@ pub enum RouteAttempt {
     Ech { ech: EchSource },
     Sni { sni: Vec<String> },
     Proxy { node_id: String, protocol: String },
+    IpProbe { ips: Option<Vec<std::net::IpAddr>> },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
