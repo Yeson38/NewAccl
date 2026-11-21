@@ -45,13 +45,21 @@ jobs:
     - name: Build Release
       run: cargo build --release --target ${{ matrix.target }}
 
+    # 新增步骤：把编译产物和配置、证书复制到一个干净的文件夹里
+    - name: Prepare Package Directory
+      shell: bash
+      run: |
+        mkdir package
+        cp target/${{ matrix.target }}/release/new-accl package/ 2>/dev/null || true
+        cp target/${{ matrix.target }}/release/new-accl.exe package/ 2>/dev/null || true
+        cp config.json package/ 2>/dev/null || true
+        # 程序首次运行会自动生成证书，如果生成了也一并放进包里
+        cp ca.crt package/ 2>/dev/null || true
+        cp ca.key package/ 2>/dev/null || true
+
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
-        path: |
-          target/${{ matrix.target }}/release/new-accl
-          target/${{ matrix.target }}/release/new-accl.exe
-          config.json
-          ca.crt
-          ca.key
+        # 只打包这个干净的 package 目录
+        path: package/
