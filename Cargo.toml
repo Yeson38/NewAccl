@@ -6,19 +6,16 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.38", features = ["full"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-socket2 = "0.5"
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "tls12"] }
 aws-lc-rs = "1.8"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 anyhow = "1.0"
 async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 webpki-roots = "0.26"
 rcgen = "0.13"
-rustls-pemfile = "2.1"
 hyper = { version = "1.4", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"

@@ -19,6 +19,7 @@ impl ModeEngine for RaceEngine {
                     RouteAttempt::Direct,
                     RouteAttempt::Ech { ech: EchSource::Own },
                     RouteAttempt::Sni { sni: vec!["www.bing.com".to_string()] },
+                    RouteAttempt::Proxy { node_id: "local-socks5".to_string(), protocol: "socks5".to_string() },
                 ],
                 fallback: true,
             });
