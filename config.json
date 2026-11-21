@@ -1,0 +1,26 @@
+{
+  "groups": [
+    {
+      "name": "直连优选组 (Watt模式)",
+      "domains": ["github.com", "githubusercontent.com"],
+      "routes": [
+        { "mode": "ipprobe" },
+        { "mode": "direct" },
+        { "mode": "ech", "ech": "own" },
+        { "mode": "sni", "sni": ["www.bing.com"] },
+        { "mode": "proxy", "node_id": "local", "protocol": "socks5" }
+      ]
+    },
+    {
+      "name": "代理翻墙组 (Clash模式)",
+      "domains": ["reddit.com", "youtube.com", "ytimg.com", "google.com"],
+      "routes": [
+        { "mode": "proxy", "node_id": "local", "protocol": "socks5" },
+        { "mode": "direct" }
+      ]
+    }
+  ],
+  "default_routes": [
+    { "mode": "direct" }
+  ]
+}

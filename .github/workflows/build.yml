@@ -12,15 +12,12 @@ jobs:
     strategy:
       matrix:
         include:
-          # Linux (保持原样)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact_name: new-accl-linux
-          # Windows (保持原样)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact_name: new-accl-windows
-          # macOS (修复：指定为 Apple Silicon 原生架构)
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: new-accl-macos-arm64
@@ -36,12 +33,10 @@ jobs:
       with:
         targets: ${{ matrix.target }}
 
-    # 关键修复：在缓存步骤后，显式再次安装目标，防止缓存覆盖
     - name: Ensure target is installed
       run: rustup target add ${{ matrix.target }}
       if: matrix.target == 'x86_64-apple-darwin' || matrix.target == 'aarch64-apple-darwin'
 
-    # 关键修复：禁用缓存二进制文件，防止 macOS 上的工具链损坏
     - name: Rust Cache
       uses: Swatinem/rust-cache@v2
       with:
@@ -57,5 +52,6 @@ jobs:
         path: |
           target/${{ matrix.target }}/release/new-accl
           target/${{ matrix.target }}/release/new-accl.exe
-          target/${{ matrix.target }}/release/ca.crt
-          target/${{ matrix.target }}/release/ca.key
+          config.json
+          ca.crt
+          ca.key
