@@ -9,6 +9,16 @@ use crate::core::types::ConnectionRequest;
 use crate::core::executor::{build_candidates, Racer};
 use futures_util::stream::iter;
 
+use bytes::Bytes;
+use http_body_util::{BodyExt, Empty};
+use http_body_util::combinators::BoxBody;
+
+type RespBody = BoxBody<Bytes, hyper::Error>;
+
+fn empty_body() -> RespBody {
+    Empty::<Bytes>::new().map_err(|never| match never {}).boxed()
+}
+
 pub async fn start_proxy_server(dispatcher: Arc<EngineDispatcher>) -> anyhow::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8443").await?;
 
@@ -38,11 +48,11 @@ pub async fn start_proxy_server(dispatcher: Arc<EngineDispatcher>) -> anyhow::Re
 async fn handle_connect(
     req: Request<hyper::body::Incoming>,
     dispatcher: Arc<EngineDispatcher>,
-) -> Result<Response<hyper::body::Incoming>, hyper::Error> {
+) -> Result<Response<RespBody>, hyper::Error> {
     if req.method() != hyper::Method::CONNECT {
         return Ok(Response::builder()
             .status(StatusCode::METHOD_NOT_ALLOWED)
-            .body(hyper::body::Incoming::empty())
+            .body(empty_body())
             .unwrap());
     }
 
@@ -69,7 +79,6 @@ async fn handle_connect(
             Ok(upgraded) => {
                 let mut upgraded = TokioIo::new(upgraded);
                 
-                // 执行竞速获取上游流
                 let candidates = build_candidates(plan, conn_req.clone());
                 let stream_iter = iter(candidates);
                 
@@ -89,5 +98,5 @@ async fn handle_connect(
         }
     });
 
-    Ok(Response::new(hyper::body::Incoming::empty()))
+    Ok(Response::new(empty_body()))
 }

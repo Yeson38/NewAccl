@@ -15,10 +15,11 @@ impl RaceCandidate for ProxyCandidate {
 
     fn connect(self) -> Pin<Box<dyn Future<Output = Result<(String, BoxedStream)>> + Send>> {
         Box::pin(async move {
+            let label = self.label(); // 先获取 label
             // 暂未接入真实节点池，先用 TCP 占位
             let addr = format!("{}:{}", self.req.domain.unwrap_or_default(), self.req.port);
             let stream = tokio::net::TcpStream::connect(addr).await?;
-            Ok((self.label(), Box::new(stream) as BoxedStream))
+            Ok((label, Box::new(stream) as BoxedStream))
         })
     }
 }

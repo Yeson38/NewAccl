@@ -19,6 +19,7 @@ impl RaceCandidate for SniCandidate {
 
     fn connect(self) -> Pin<Box<dyn Future<Output = Result<(String, BoxedStream)>> + Send>> {
         Box::pin(async move {
+            let label = self.label(); // 先获取 label
             let mut roots = RootCertStore::empty();
             roots.extend(TLS_SERVER_ROOTS.iter().cloned());
             
@@ -27,7 +28,7 @@ impl RaceCandidate for SniCandidate {
                 .with_no_client_auth();
                 
             let connector = TlsConnector::from(Arc::new(config));
-            let domain = self.req.domain.unwrap_or_default();
+            let domain = self.req.domain.unwrap_or_default(); // 之后移动 domain
             let addr = format!("{}:{}", domain, self.req.port);
             
             let tcp = tokio::net::TcpStream::connect(addr).await?;
@@ -39,7 +40,7 @@ impl RaceCandidate for SniCandidate {
             };
             
             let tls_stream = connector.connect(server_name, tcp).await?;
-            Ok((self.label(), Box::new(tls_stream) as BoxedStream))
+            Ok((label, Box::new(tls_stream) as BoxedStream))
         })
     }
 }

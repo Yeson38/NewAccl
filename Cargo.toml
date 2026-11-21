@@ -22,3 +22,4 @@ rustls-pemfile = "2.1"
 hyper = { version = "1.4", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
+bytes = "1.0"

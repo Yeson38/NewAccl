@@ -20,6 +20,32 @@ pub trait RaceCandidate: Send + Sync + 'static {
     fn connect(self) -> Pin<Box<dyn Future<Output = Result<(String, BoxedStream)>> + Send>>;
 }
 
+pub enum Candidate {
+    Direct(direct::DirectCandidate),
+    Ech(ech::EchCandidate),
+    Sni(sni::SniCandidate),
+    Proxy(proxy::ProxyCandidate),
+}
+
+impl RaceCandidate for Candidate {
+    fn label(&self) -> String {
+        match self {
+            Candidate::Direct(c) => c.label(),
+            Candidate::Ech(c) => c.label(),
+            Candidate::Sni(c) => c.label(),
+            Candidate::Proxy(c) => c.label(),
+        }
+    }
+    fn connect(self) -> Pin<Box<dyn Future<Output = Result<(String, BoxedStream)>> + Send>> {
+        match self {
+            Candidate::Direct(c) => c.connect(),
+            Candidate::Ech(c) => c.connect(),
+            Candidate::Sni(c) => c.connect(),
+            Candidate::Proxy(c) => c.connect(),
+        }
+    }
+}
+
 pub struct Racer;
 
 impl Racer {
@@ -29,7 +55,7 @@ impl Racer {
         S: Stream<Item = C> + Unpin,
     {
         let mut pending = FuturesUnordered::new();
-        let (failure_tx, mut failure_rx) = watch::channel(false);
+        let (failure_tx, failure_rx) = watch::channel(false);
         let mut first_start: Option<Instant> = None;
         let mut exhausted = false;
 
@@ -62,7 +88,10 @@ impl Racer {
                                     let start = Instant::now();
                                     match candidate.connect().await {
                                         Ok((lbl, s)) => Ok((lbl, s, start.elapsed())),
-                                        Err(e) => Err(e),
+                                        Err(e) => {
+                                            let _ = label;
+                                            Err(e)
+                                        },
                                     }
                                 }));
                             }
@@ -93,23 +122,23 @@ impl Racer {
     }
 }
 
-pub fn build_candidates(plan: crate::core::types::ExecutionPlan, req: ConnectionRequest) -> Vec<Box<dyn RaceCandidate>> {
-    let mut cands: Vec<Box<dyn RaceCandidate>> = Vec::new();
+pub fn build_candidates(plan: crate::core::types::ExecutionPlan, req: ConnectionRequest) -> Vec<Candidate> {
+    let mut cands: Vec<Candidate> = Vec::new();
     for attempt in plan.candidates {
         match attempt {
             RouteAttempt::Direct => {
-                cands.push(Box::new(direct::DirectCandidate { req: req.clone() }));
+                cands.push(Candidate::Direct(direct::DirectCandidate { req: req.clone() }));
             }
             RouteAttempt::Ech { .. } => {
-                cands.push(Box::new(ech::EchCandidate { req: req.clone() }));
+                cands.push(Candidate::Ech(ech::EchCandidate { req: req.clone() }));
             }
             RouteAttempt::Sni { sni } => {
                 for fake in sni {
-                    cands.push(Box::new(sni::SniCandidate { req: req.clone(), fake_sni: fake }));
+                    cands.push(Candidate::Sni(sni::SniCandidate { req: req.clone(), fake_sni: fake }));
                 }
             }
             RouteAttempt::Proxy { node_id, .. } => {
-                cands.push(Box::new(proxy::ProxyCandidate { req: req.clone(), node_id }));
+                cands.push(Candidate::Proxy(proxy::ProxyCandidate { req: req.clone(), node_id }));
             }
         }
     }
