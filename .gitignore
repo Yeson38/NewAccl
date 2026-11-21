@@ -2,3 +2,5 @@
 **/*.rs.bk
 ca.crt
 ca.key
+gost*
+*.tar.gz
