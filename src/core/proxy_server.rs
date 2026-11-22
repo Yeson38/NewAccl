@@ -20,7 +20,9 @@ fn empty_body() -> RespBody {
 }
 
 pub async fn start_proxy_server(dispatcher: Arc<EngineDispatcher>) -> anyhow::Result<()> {
+    // 这里如果报错，会向上抛出，由 background.rs 捕获
     let listener = TcpListener::bind("127.0.0.1:8443").await?;
+    tracing::info!("代理服务启动成功: 127.0.0.1:8443");
 
     loop {
         let (stream, _) = listener.accept().await?;
@@ -39,7 +41,7 @@ pub async fn start_proxy_server(dispatcher: Arc<EngineDispatcher>) -> anyhow::Re
                 .with_upgrades()
                 .await
             {
-                tracing::error!("Error serving connection: {:?}", err);
+                tracing::debug!("Error serving connection: {:?}", err);
             }
         });
     }
@@ -72,7 +74,7 @@ async fn handle_connect(
         }
     });
 
-    tracing::info!("Routing {}:{} with candidates: {:?}", host, port, plan.candidates);
+    tracing::info!("Routing {}:{} -> {:?}", host, port, plan.candidates);
 
     tokio::spawn(async move {
         match hyper::upgrade::on(req).await {
@@ -84,13 +86,13 @@ async fn handle_connect(
                 
                 match Racer::race(stream_iter).await {
                     Ok(mut upstream) => {
-                        tracing::info!("Tunnel established for {}:{}", host, port);
+                        tracing::info!("Tunnel established: {}:{}", host, port);
                         if let Err(e) = tokio::io::copy_bidirectional(&mut upgraded, &mut upstream).await {
-                            tracing::error!("Copy error for {}:{}: {}", host, port, e);
+                            tracing::debug!("Copy disconnected: {}:{} - {}", host, port, e);
                         }
                     }
                     Err(e) => {
-                        tracing::error!("Failed to race candidates for {}:{}: {}", host, port, e);
+                        tracing::error!("Failed to connect {}:{} - {}", host, port, e);
                     }
                 }
             }

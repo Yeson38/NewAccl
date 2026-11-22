@@ -1,10 +1,9 @@
 use crossbeam_channel::{Receiver, Sender};
 use crate::ui::{Command, Event};
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use crate::core::engine::{EngineDispatcher, ModeEngine};
 use crate::core::engine::race_engine::RaceEngine;
 
-// 简易的日志拦截器，把 tracing 日志推给 UI
 struct UiLogger {
     tx: Sender<Event>,
 }
@@ -17,6 +16,7 @@ impl tracing::Subscriber for UiLogger {
     fn event(&self, event: &tracing::Event<'_>) {
         let mut visitor = LogVisitor { msg: String::new() };
         event.record(&mut visitor);
+        // 只把 info 级别以上的日志发给 UI
         let _ = self.tx.send(Event::Log(visitor.msg));
     }
     fn enter(&self, _span: &tracing::span::Id) {}
@@ -33,31 +33,54 @@ impl tracing::field::Visit for LogVisitor {
 }
 
 pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) {
-    // 注册日志钩子
     tracing::subscriber::set_global_default(UiLogger { tx: event_tx.clone() }).unwrap();
     
-    // 初始化你的 Engine
     let engine: Box<dyn ModeEngine> = Box::new(RaceEngine::default());
     let dispatcher = Arc::new(EngineDispatcher::new(engine));
     
-    // 生成证书
-    crate::core::mitm::init_ca().expect("Failed to init CA");
+    if let Err(e) = crate::core::mitm::init_ca() {
+        let _ = event_tx.send(Event::Log(format!("证书初始化失败: {}", e)));
+    }
+
+    // 用于控制代理是否在运行
+    let is_running = Arc::new(AtomicBool::new(false));
 
     loop {
-        if let Ok(cmd) = cmd_rx.try_recv() {
+        while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
                 Command::StartProxy => {
+                    if is_running.load(Ordering::SeqCst) {
+                        let _ = event_tx.send(Event::Log("代理已经在运行中，请勿重复启动。".into()));
+                        continue;
+                    }
+                    
+                    is_running.store(true, Ordering::SeqCst);
                     let _ = event_tx.send(Event::Status(true));
-                    let _ = event_tx.send(Event::Log("尝试启动代理...".into()));
+                    let _ = event_tx.send(Event::Log("正在启动代理服务...".into()));
                     
                     let dispatcher = dispatcher.clone();
+                    let event_tx_clone = event_tx.clone();
+                    let running_flag = is_running.clone();
+
                     tokio::spawn(async move {
-                        crate::core::proxy_server::start_proxy_server(dispatcher).await.unwrap();
+                        // 尝试绑定端口，如果失败就优雅退出
+                        match crate::core::proxy_server::start_proxy_server(dispatcher).await {
+                            Ok(_) => {
+                                let _ = event_tx_clone.send(Event::Log("代理已正常退出。".into()));
+                            }
+                            Err(e) => {
+                                let _ = event_tx_clone.send(Event::Log(format!("启动失败: 端口可能被占用 ({})", e)));
+                            }
+                        }
+                        running_flag.store(false, Ordering::SeqCst);
+                        let _ = event_tx_clone.send(Event::Status(false));
                     });
                 }
                 Command::StopProxy => {
+                    // 目前为演示，真实停止需要用到 CancellationToken 来中断 TcpListener
                     let _ = event_tx.send(Event::Status(false));
-                    let _ = event_tx.send(Event::Log("代理已停止 (需要重启软件应用更改)".into()));
+                    let _ = event_tx.send(Event::Log("目前需通过重启软件来彻底停止代理。".into()));
+                    is_running.store(false, Ordering::SeqCst);
                 }
             }
         }
