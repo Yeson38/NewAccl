@@ -53,8 +53,8 @@ pub fn run_ui() {
                 <Column gap=Spacing::Lg padding=Spacing::Xl>
                     // 顶部状态栏
                     <Row gap=Spacing::Md>
-                        <Text text_style=TextStyle::Title2>"NewAccl"</Text>
-                        <Text text_style=TextStyle::Body color=Color::Green>"● 运行中"</Text>
+                        <Text text_style=TextStyle::Title>"NewAccl"</Text>
+                        <Text text_style=TextStyle::Body>"● 状态正常"</Text>
                     </Row>
 
                     // 操作按钮区
@@ -69,12 +69,12 @@ pub fn run_ui() {
                     </Row>
 
                     // 提示区域
-                    <Text text_style=TextStyle::Caption color=Color::Secondary>
+                    <Text text_style=TextStyle::Caption>
                         "提示：请在系统设置中将 HTTP 代理设置为 127.0.0.1:8443 以接管流量。"
                     </Text>
 
                     // 日志控制台
-                    <Text text_style=TextStyle::Title3>"实时日志"</Text>
+                    <Text text_style=TextStyle::Title>"实时日志"</Text>
                     <ScrollView max_height=300.0>
                         <Text text_style=TextStyle::Body>
                             {logs_snapshot}
