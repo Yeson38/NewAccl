@@ -16,7 +16,6 @@ impl tracing::Subscriber for UiLogger {
     fn event(&self, event: &tracing::Event<'_>) {
         let mut visitor = LogVisitor { msg: String::new() };
         event.record(&mut visitor);
-        // 只把 info 级别以上的日志发给 UI
         let _ = self.tx.send(Event::Log(visitor.msg));
     }
     fn enter(&self, _span: &tracing::span::Id) {}
@@ -33,7 +32,7 @@ impl tracing::field::Visit for LogVisitor {
 }
 
 pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) {
-    tracing::subscriber::set_global_default(UiLogger { tx: event_tx.clone() }).unwrap();
+    let _ = tracing::subscriber::set_global_default(UiLogger { tx: event_tx.clone() });
     
     let engine: Box<dyn ModeEngine> = Box::new(RaceEngine::default());
     let dispatcher = Arc::new(EngineDispatcher::new(engine));
@@ -42,7 +41,6 @@ pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) 
         let _ = event_tx.send(Event::Log(format!("证书初始化失败: {}", e)));
     }
 
-    // 用于控制代理是否在运行
     let is_running = Arc::new(AtomicBool::new(false));
 
     loop {
@@ -50,26 +48,25 @@ pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) 
             match cmd {
                 Command::StartProxy => {
                     if is_running.load(Ordering::SeqCst) {
-                        let _ = event_tx.send(Event::Log("代理已经在运行中，请勿重复启动。".into()));
+                        let _ = event_tx.send(Event::Log("代理已经在运行中。".into()));
                         continue;
                     }
                     
                     is_running.store(true, Ordering::SeqCst);
                     let _ = event_tx.send(Event::Status(true));
-                    let _ = event_tx.send(Event::Log("正在启动代理服务...".into()));
+                    let _ = event_tx.send(Event::Log("正在尝试绑定端口 8443...".into()));
                     
                     let dispatcher = dispatcher.clone();
                     let event_tx_clone = event_tx.clone();
                     let running_flag = is_running.clone();
 
                     tokio::spawn(async move {
-                        // 尝试绑定端口，如果失败就优雅退出
                         match crate::core::proxy_server::start_proxy_server(dispatcher).await {
                             Ok(_) => {
                                 let _ = event_tx_clone.send(Event::Log("代理已正常退出。".into()));
                             }
                             Err(e) => {
-                                let _ = event_tx_clone.send(Event::Log(format!("启动失败: 端口可能被占用 ({})", e)));
+                                let _ = event_tx_clone.send(Event::Log(format!("启动失败: 端口被占用或权限不足 ({})", e)));
                             }
                         }
                         running_flag.store(false, Ordering::SeqCst);
@@ -77,10 +74,9 @@ pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) 
                     });
                 }
                 Command::StopProxy => {
-                    // 目前为演示，真实停止需要用到 CancellationToken 来中断 TcpListener
-                    let _ = event_tx.send(Event::Status(false));
-                    let _ = event_tx.send(Event::Log("目前需通过重启软件来彻底停止代理。".into()));
+                    let _ = event_tx.send(Event::Log("尝试停止代理（注意：当前版本需要关闭软件来彻底释放端口）。".into()));
                     is_running.store(false, Ordering::SeqCst);
+                    let _ = event_tx.send(Event::Status(false));
                 }
             }
         }
