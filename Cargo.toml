@@ -22,3 +22,6 @@ http-body-util = "0.1"
 bytes = "1.0"
 mitsuami = "1.0"
 crossbeam-channel = "0.5"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
