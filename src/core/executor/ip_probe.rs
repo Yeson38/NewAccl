@@ -1,14 +1,10 @@
 use std::pin::Pin;
 use std::future::Future;
-use std::sync::Arc;
 use std::net::{SocketAddr, IpAddr};
 use std::time::Duration;
 use anyhow::{anyhow, Result};
 use tokio::net::{TcpStream, lookup_host};
 use tokio::time::timeout;
-use tokio_rustls::TlsConnector;
-use rustls::RootCertStore;
-use webpki_roots::TLS_SERVER_ROOTS;
 use tracing::debug;
 
 use crate::core::executor::RaceCandidate;
@@ -68,16 +64,8 @@ impl RaceCandidate for IpProbeCandidate {
             let (best_addr, best_latency, tcp) = best_stream.ok_or_else(|| anyhow!("All IP probes failed"))?;
             debug!("IpProbe winner {} latency {:?}", best_addr, best_latency);
 
-            let mut roots = RootCertStore::empty();
-            roots.extend(TLS_SERVER_ROOTS.iter().cloned());
-            let config = rustls::ClientConfig::builder()
-                .with_root_certificates(roots)
-                .with_no_client_auth();
-            let connector = TlsConnector::from(Arc::new(config));
-            let server_name = rustls::pki_types::ServerName::try_from(domain)?;
-            let tls_stream = connector.connect(server_name, tcp).await?;
-
-            Ok((format!("IpProbe({})", best_addr.ip()), Box::new(tls_stream) as BoxedStream))
+            // 【核心修复】：直接返回 TCP 流，不在这里做 TLS 握手
+            Ok((format!("IpProbe({})", best_addr.ip()), Box::new(tcp) as BoxedStream))
         })
     }
 }

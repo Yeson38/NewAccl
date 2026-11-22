@@ -18,11 +18,35 @@ pub fn run_ui() {
 
     let logs = signal(Vec::<String>::new());
     let is_running = signal(false);
+    // 新增一个信号用于强制刷新
+    let tick = signal(0);
 
     // 后台 Tokio 运行时
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(crate::core::background::run_background(cmd_rx, event_tx));
+    });
+
+    // 事件监听线程
+    let logs_clone = logs.clone();
+    let is_running_clone = is_running.clone();
+    let tick_clone = tick.clone();
+    thread::spawn(move || {
+        while let Ok(event) = event_rx.recv() {
+            match event {
+                Event::Log(msg) => {
+                    logs_clone.update(|l| {
+                        l.push(format!("> {}", msg));
+                        if l.len() > 100 { l.remove(0); }
+                    });
+                }
+                Event::Status(status) => {
+                    is_running_clone.set(status);
+                }
+            }
+            // 每次有事件到来，就强行改变 tick 信号，这通常能触发 mitsuami 的重绘
+            tick_clone.update(|t| *t += 1);
+        }
     });
 
     // UI 主循环
@@ -31,21 +55,8 @@ pub fn run_ui() {
             let cmd_tx_start = cmd_tx.clone();
             let cmd_tx_stop = cmd_tx.clone();
             
-            // 关键修复：在 UI 渲染循环中同步接收事件
-            while let Ok(event) = event_rx.try_recv() {
-                match event {
-                    Event::Log(msg) => {
-                        logs.update(|l| {
-                            l.push(format!("> {}", msg));
-                            if l.len() > 100 { l.remove(0); }
-                        });
-                    }
-                    Event::Status(status) => {
-                        is_running.set(status);
-                    }
-                }
-            }
-
+            // 依赖 tick 信号，强制重绘时重新读取字符串
+            let _ = tick.get(); 
             let current_logs = logs.get().join("\n");
             let status_text = if is_running.get() { "● 运行中 (已接管系统代理)" } else { "○ 已停止" };
 
@@ -67,7 +78,7 @@ pub fn run_ui() {
                     </Row>
 
                     <Text text_style=TextStyle::Caption>
-                        "提示：启动后程序会自动接管 Windows 系统代理。如果界面状态未刷新，请在窗口内移动一下鼠标或点击一下窗口。"
+                        "提示：启动后程序会自动接管 Windows 系统代理。请确保程序有管理员权限（如果是修改系统注册表）。"
                     </Text>
 
                     <Text text_style=TextStyle::Title>"实时日志"</Text>
