@@ -1,6 +1,8 @@
 use crossbeam_channel::{Receiver, Sender};
 use crate::ui::{Command, Event};
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::fs::OpenOptions;
+use std::io::Write;
 use crate::core::engine::{EngineDispatcher, ModeEngine};
 use crate::core::engine::race_engine::RaceEngine;
 
@@ -16,6 +18,13 @@ impl tracing::Subscriber for UiLogger {
     fn event(&self, event: &tracing::Event<'_>) {
         let mut visitor = LogVisitor { msg: String::new() };
         event.record(&mut visitor);
+        
+        // 1. 写入文件
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("new-accl.log") {
+            let _ = writeln!(file, "{}", visitor.msg);
+        }
+        
+        // 2. 发送给 UI
         let _ = self.tx.send(Event::Log(visitor.msg));
     }
     fn enter(&self, _span: &tracing::span::Id) {}
@@ -34,6 +43,8 @@ impl tracing::field::Visit for LogVisitor {
 pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) {
     let _ = tracing::subscriber::set_global_default(UiLogger { tx: event_tx.clone() });
     
+    let _ = event_tx.send(Event::Log("后台服务初始化...".into()));
+
     let engine: Box<dyn ModeEngine> = Box::new(RaceEngine::default());
     let dispatcher = Arc::new(EngineDispatcher::new(engine));
     

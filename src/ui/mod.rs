@@ -16,37 +16,42 @@ pub fn run_ui() {
     let (cmd_tx, cmd_rx) = unbounded::<Command>();
     let (event_tx, event_rx) = unbounded::<Event>();
 
-    // 正确方式：使用 signal() 函数创建响应式状态
+    // 创建响应式状态
     let logs = signal(Vec::<String>::new());
     let is_running = signal(false);
 
-    // 后台运行逻辑
+    // 1. 后台 Tokio 运行时 (处理代理)
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(crate::core::background::run_background(cmd_rx, event_tx));
     });
 
-    // UI 主循环
-    App::new()
-        .window("NewAccl 加速器", Size::new(650.0, 500.0), move || {
-            // 轮询处理通道事件，并更新 Signal 触发 UI 重绘
-            while let Ok(event) = event_rx.try_recv() {
-                match event {
-                    Event::Log(msg) => {
-                        logs.update(|l| {
-                            l.push(format!("> {}", msg));
-                            if l.len() > 100 { l.remove(0); }
-                        });
-                    }
-                    Event::Status(status) => {
-                        is_running.set(status);
-                    }
+    // 2. 后台事件监听线程 (把通道里的消息转成 Signal，触发 UI 重绘)
+    let logs_clone = logs.clone();
+    let is_running_clone = is_running.clone();
+    thread::spawn(move || {
+        while let Ok(event) = event_rx.recv() {
+            match event {
+                Event::Log(msg) => {
+                    logs_clone.update(|l| {
+                        l.push(format!("> {}", msg));
+                        if l.len() > 100 { l.remove(0); }
+                    });
+                }
+                Event::Status(status) => {
+                    is_running_clone.set(status);
                 }
             }
+        }
+    });
 
+    // 3. UI 主循环
+    App::new()
+        .window("NewAccl 加速器", Size::new(650.0, 500.0), move || {
             let cmd_tx_start = cmd_tx.clone();
             let cmd_tx_stop = cmd_tx.clone();
-            // 通过 get() 读取 Signal 的当前值
+            
+            // 读取 Signal 的当前值
             let current_logs = logs.get().join("\n");
             let status_text = if is_running.get() { "● 运行中" } else { "○ 已停止" };
 
@@ -68,7 +73,7 @@ pub fn run_ui() {
                     </Row>
 
                     <Text text_style=TextStyle::Caption>
-                        "提示：请在系统设置中将 HTTP 代理设置为 127.0.0.1:8443。如果无法启动，请先关闭残留的黑框进程。"
+                        "提示：请在系统设置中将 HTTP 代理设置为 127.0.0.1:8443。"
                     </Text>
 
                     <Text text_style=TextStyle::Title>"实时日志"</Text>
