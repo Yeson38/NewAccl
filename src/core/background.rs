@@ -1,7 +1,6 @@
 use crossbeam_channel::{Receiver, Sender};
 use crate::ui::{Command, Event};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use crate::core::engine::{EngineDispatcher, ModeEngine};
 use crate::core::engine::race_engine::RaceEngine;
 
@@ -11,12 +10,8 @@ struct UiLogger {
 }
 
 impl tracing::Subscriber for UiLogger {
-    fn enabled(&self, _metadata: &tracing::Metadata<'_>) -> bool {
-        true
-    }
-    fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
-        tracing::span::Id::from_u64(1)
-    }
+    fn enabled(&self, _metadata: &tracing::Metadata<'_>) -> bool { true }
+    fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::span::Id { tracing::span::Id::from_u64(1) }
     fn record(&self, _span: &tracing::span::Id, _values: &tracing::span::Record<'_>) {}
     fn record_follows_from(&self, _span: &tracing::span::Id, _follows: &tracing::span::Id) {}
     fn event(&self, event: &tracing::Event<'_>) {
@@ -28,10 +23,7 @@ impl tracing::Subscriber for UiLogger {
     fn exit(&self, _span: &tracing::span::Id) {}
 }
 
-struct LogVisitor {
-    msg: String,
-}
-
+struct LogVisitor { msg: String }
 impl tracing::field::Visit for LogVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
@@ -43,15 +35,13 @@ impl tracing::field::Visit for LogVisitor {
 pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) {
     // 注册日志钩子
     tracing::subscriber::set_global_default(UiLogger { tx: event_tx.clone() }).unwrap();
-
+    
     // 初始化你的 Engine
     let engine: Box<dyn ModeEngine> = Box::new(RaceEngine::default());
     let dispatcher = Arc::new(EngineDispatcher::new(engine));
-
+    
     // 生成证书
     crate::core::mitm::init_ca().expect("Failed to init CA");
-
-    let proxy_task = None;
 
     loop {
         if let Ok(cmd) = cmd_rx.try_recv() {
@@ -59,16 +49,13 @@ pub async fn run_background(cmd_rx: Receiver<Command>, event_tx: Sender<Event>) 
                 Command::StartProxy => {
                     let _ = event_tx.send(Event::Status(true));
                     let _ = event_tx.send(Event::Log("尝试启动代理...".into()));
-
+                    
                     let dispatcher = dispatcher.clone();
-                    // 这里需要改造 proxy_server，让它非阻塞且在后台运行
                     tokio::spawn(async move {
                         crate::core::proxy_server::start_proxy_server(dispatcher).await.unwrap();
                     });
                 }
                 Command::StopProxy => {
-                    // 因为目前代理服务器的 accept 是个死循环，如果要真正停止，需要加入 CancellationToken
-                    // 这里仅仅演示状态切换
                     let _ = event_tx.send(Event::Status(false));
                     let _ = event_tx.send(Event::Log("代理已停止 (需要重启软件应用更改)".into()));
                 }

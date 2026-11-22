@@ -1,5 +1,5 @@
 use mitsuami::prelude::*;
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::unbounded;
 use std::thread;
 
 // 定义 UI 发给后台的命令
@@ -16,9 +16,9 @@ pub enum Event {
 
 pub fn run_ui() {
     // 用于 UI -> 后台 的命令通道
-    let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<Command>();
+    let (cmd_tx, cmd_rx) = unbounded::<Command>();
     // 用于 后台 -> UI 的事件通道
-    let (event_tx, event_rx) = crossbeam_channel::unbounded::<Event>();
+    let (event_tx, event_rx) = unbounded::<Event>();
 
     // 启动后台 Tokio 运行时
     let event_tx_clone = event_tx.clone();
@@ -29,9 +29,7 @@ pub fn run_ui() {
 
     // 启动 mitsuami App
     App::new()
-        .title("NewAccl 加速器")
-        .size(600, 400)
-        .view(move || {
+        .window("NewAccl 加速器", Size::new(600.0, 400.0), move || {
             // 从通道接收日志 (非阻塞)
             let mut logs = Vec::new();
             while let Ok(event) = event_rx.try_recv() {
@@ -40,36 +38,25 @@ pub fn run_ui() {
                 }
             }
 
-            // 用 Arc<Mutex> 维持状态 (简易做法)
             let cmd_tx = cmd_tx.clone();
-
-            VStack::new()
-                .padding(20)
-                .spacing(10)
-                .children((
-                    HStack::new()
-                        .spacing(10)
-                        .children((
-                            Button::new("启动代理")
-                                .on_click(move || {
-                                    let _ = cmd_tx.send(Command::StartProxy);
-                                }),
-                            Button::new("停止代理")
-                                .on_click({
-                                    let cmd_tx = cmd_tx.clone();
-                                    move || {
-                                        let _ = cmd_tx.send(Command::StopProxy);
-                                    }
-                                }),
-                        )),
-                    // 日志区域
-                    ScrollView::new(
-                        Text::new(logs.join("\n"))
-                            .font_size(12)
-                            .monospace()
-                    )
-                    .frame_max_height(250),
-                ))
+            
+            view! {
+                <Column gap=Spacing::Md padding=Spacing::Lg>
+                    <Row gap=Spacing::Md>
+                        <Button @click=move || {
+                            let _ = cmd_tx.send(Command::StartProxy);
+                        }>"启动代理"</Button>
+                        <Button @click=move || {
+                            let _ = cmd_tx.send(Command::StopProxy);
+                        }>"停止代理"</Button>
+                    </Row>
+                    <ScrollView max_height=250.0>
+                        <Text text_style=TextStyle::Body>
+                            {logs.join("\n")}
+                        </Text>
+                    </ScrollView>
+                </Column>
+            }
         })
         .run();
 }
