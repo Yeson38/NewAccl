@@ -38,16 +38,18 @@ pub fn run_ui() {
                 }
             }
 
-            let cmd_tx = cmd_tx.clone();
+            // 关键修复：为每个按钮单独克隆一个发送端
+            let cmd_tx_start = cmd_tx.clone();
+            let cmd_tx_stop = cmd_tx.clone();
             
             view! {
                 <Column gap=Spacing::Md padding=Spacing::Lg>
                     <Row gap=Spacing::Md>
                         <Button @click=move || {
-                            let _ = cmd_tx.send(Command::StartProxy);
+                            let _ = cmd_tx_start.send(Command::StartProxy);
                         }>"启动代理"</Button>
                         <Button @click=move || {
-                            let _ = cmd_tx.send(Command::StopProxy);
+                            let _ = cmd_tx_stop.send(Command::StopProxy);
                         }>"停止代理"</Button>
                     </Row>
                     <ScrollView max_height=250.0>

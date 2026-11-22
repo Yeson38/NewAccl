@@ -14,14 +14,11 @@ serde_json = "1.0"
 anyhow = "1.0"
 async-trait = "0.1"
 tracing = "0.1"
-tracing-subscriber = "0.3"
 webpki-roots = "0.26"
 rcgen = "0.13"
 hyper = { version = "1.4", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 bytes = "1.0"
-
-# 新增 UI 和通信依赖
 mitsuami = "1.0"
 crossbeam-channel = "0.5"
