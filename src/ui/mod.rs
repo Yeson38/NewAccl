@@ -1,7 +1,6 @@
 use mitsuami::prelude::*;
 use crossbeam_channel::unbounded;
 use std::thread;
-use mitsuami::reactive::Signal; // 引入状态信号
 
 pub enum Command {
     StartProxy,
@@ -17,9 +16,9 @@ pub fn run_ui() {
     let (cmd_tx, cmd_rx) = unbounded::<Command>();
     let (event_tx, event_rx) = unbounded::<Event>();
 
-    // 使用 mitsuami 的响应式状态
-    let (logs, set_logs) = Signal::new(Vec::<String>::new());
-    let (is_running, set_running) = Signal::new(false);
+    // 正确方式：使用 signal() 函数创建响应式状态
+    let logs = signal(Vec::<String>::new());
+    let is_running = signal(false);
 
     // 后台运行逻辑
     thread::spawn(move || {
@@ -34,19 +33,20 @@ pub fn run_ui() {
             while let Ok(event) = event_rx.try_recv() {
                 match event {
                     Event::Log(msg) => {
-                        set_logs.update(|l| {
+                        logs.update(|l| {
                             l.push(format!("> {}", msg));
                             if l.len() > 100 { l.remove(0); }
                         });
                     }
                     Event::Status(status) => {
-                        set_running.set(status);
+                        is_running.set(status);
                     }
                 }
             }
 
             let cmd_tx_start = cmd_tx.clone();
             let cmd_tx_stop = cmd_tx.clone();
+            // 通过 get() 读取 Signal 的当前值
             let current_logs = logs.get().join("\n");
             let status_text = if is_running.get() { "● 运行中" } else { "○ 已停止" };
 
