@@ -1,6 +1,8 @@
 use mitsuami::prelude::*;
 use crossbeam_channel::unbounded;
 use std::thread;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub enum Command {
     StartProxy,
@@ -10,55 +12,60 @@ pub enum Command {
 pub enum Event {
     Log(String),
     Status(bool),
+    Tick, // 强制刷新信号
 }
 
 pub fn run_ui() {
     let (cmd_tx, cmd_rx) = unbounded::<Command>();
     let (event_tx, event_rx) = unbounded::<Event>();
 
-    let logs = signal(Vec::<String>::new());
-    let is_running = signal(false);
-    // 新增一个信号用于强制刷新
-    let tick = signal(0);
+    // 使用 Arc<Mutex> 来安全地共享状态
+    let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let is_running = Arc::new(Mutex::new(false));
 
-    // 后台 Tokio 运行时
+    // 1. 启动后台代理任务
+    let event_tx_clone = event_tx.clone();
     thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(crate::core::background::run_background(cmd_rx, event_tx));
+        rt.block_on(crate::core::background::run_background(cmd_rx, event_tx_clone));
     });
 
-    // 事件监听线程
-    let logs_clone = logs.clone();
-    let is_running_clone = is_running.clone();
-    let tick_clone = tick.clone();
+    // 2. 启动一个定时器，每 500 毫秒发送一个 Tick 唤醒 UI
+    let event_tx_timer = event_tx.clone();
     thread::spawn(move || {
-        while let Ok(event) = event_rx.recv() {
-            match event {
-                Event::Log(msg) => {
-                    logs_clone.update(|l| {
-                        l.push(format!("> {}", msg));
-                        if l.len() > 100 { l.remove(0); }
-                    });
-                }
-                Event::Status(status) => {
-                    is_running_clone.set(status);
-                }
-            }
-            // 每次有事件到来，就强行改变 tick 信号，这通常能触发 mitsuami 的重绘
-            tick_clone.update(|t| *t += 1);
+        loop {
+            thread::sleep(Duration::from_millis(500));
+            let _ = event_tx_timer.send(Event::Tick);
         }
     });
 
-    // UI 主循环
+    // 3. UI 主循环
     App::new()
         .window("NewAccl 加速器", Size::new(650.0, 500.0), move || {
             let cmd_tx_start = cmd_tx.clone();
             let cmd_tx_stop = cmd_tx.clone();
             
-            // 依赖 tick 信号，强制重绘时重新读取字符串
-            let _ = tick.get(); 
-            let current_logs = logs.get().join("\n");
-            let status_text = if is_running.get() { "● 运行中 (已接管系统代理)" } else { "○ 已停止" };
+            // 在每次渲染时，读取所有积压的事件并更新本地状态
+            while let Ok(event) = event_rx.try_recv() {
+                match event {
+                    Event::Log(msg) => {
+                        let mut l = logs.lock().unwrap();
+                        l.push(format!("> {}", msg));
+                        if l.len() > 100 { l.remove(0); }
+                    }
+                    Event::Status(status) => {
+                        let mut r = is_running.lock().unwrap();
+                        *r = status;
+                    }
+                    Event::Tick => {
+                        // 收到定时器信号，啥也不干，单纯让闭包重新执行
+                    }
+                }
+            }
+
+            let current_logs = logs.lock().unwrap().join("\n");
+            let running_state = *is_running.lock().unwrap();
+            let status_text = if running_state { "● 运行中 (已接管系统代理)" } else { "○ 已停止" };
 
             view! {
                 <Column gap=Spacing::Lg padding=Spacing::Xl>
@@ -78,7 +85,7 @@ pub fn run_ui() {
                     </Row>
 
                     <Text text_style=TextStyle::Caption>
-                        "提示：启动后程序会自动接管 Windows 系统代理。请确保程序有管理员权限（如果是修改系统注册表）。"
+                        "提示：启动后程序会自动接管 Windows 系统代理。界面每 0.5 秒自动刷新一次日志。"
                     </Text>
 
                     <Text text_style=TextStyle::Title>"实时日志"</Text>
