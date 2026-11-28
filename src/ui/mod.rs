@@ -56,8 +56,8 @@ pub fn run_ui() {
                     <Row gap=Spacing::Md>
                         <Text text_style=TextStyle::Title>"NewAccl"</Text>
                         <Text text_style=TextStyle::Body>
-                            // 强制用闭包包裹，确保框架能追踪到状态变化
-                            { move || if is_running.get() { "● 运行中 (已接管系统代理)" } else { "○ 已停止" } }
+                            // 修复类型错误：强制转换为 String
+                            { move || if is_running.get() { "● 运行中 (已接管系统代理)".to_string() } else { "○ 已停止".to_string() } }
                         </Text>
                     </Row>
 
